@@ -10,6 +10,9 @@ Supported formats:
  - parquet
  - avro
  - json
+ - csv
+ - tsv
+ - psv
  
 Supported compressions are all that are supported by Spark and current format.
  
