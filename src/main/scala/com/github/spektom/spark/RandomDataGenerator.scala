@@ -21,15 +21,15 @@ object RandomDataGenerator {
    * The conditional probability of a non-null value being drawn from a set of "interesting" values
    * instead of being chosen uniformly at random.
    */
-  private val PROBABILITY_OF_INTERESTING_VALUE: Float = 0.5f
+  private val PROBABILITY_OF_INTERESTING_VALUE: Float = 0.1f
 
   /**
    * The probability of the generated value being null
    */
   private val PROBABILITY_OF_NULL: Float = 0.1f
 
-  private val PROBABILITY_OF_NESTED_MAP_VALUE: Float = 0.3f
-  private val PROBABILITY_OF_NESTED_ARR_VALUE: Float = 0.2f
+  private val PROBABILITY_OF_NESTED_MAP_VALUE: Float = 0.4f
+  private val PROBABILITY_OF_NESTED_ARR_VALUE: Float = 0.3f
 
   private final val MAX_STR_LEN: Int = 1024
   private final val MAX_PRIMITIVE_ARR_SIZE: Int = 128
@@ -76,6 +76,9 @@ object RandomDataGenerator {
       var s = ""
       var n = rand.nextInt(10)
       while (n > 0) {
+        if (s.length > 0) {
+          s += " "
+        }
         s += LOREM_IPSUM(rand.nextInt(LOREM_IPSUM.size))
         n -= 1
       }
