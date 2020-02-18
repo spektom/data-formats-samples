@@ -6,9 +6,7 @@ import java.nio.file.attribute.BasicFileAttributes
 
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
-object App {
-  private val OUTPUT_DIR = "output"
-
+class App(config: Config) {
   private val FORMAT_COMPRESSIONS = Map(
     "orc" -> Seq("lzo", "snappy", "zlib", "none"),
     "avro" -> Seq("deflate", "snappy", "bzip2", "xz", "uncompressed"),
@@ -22,7 +20,7 @@ object App {
   private def writeDf(df: DataFrame, schemaName: String, format: String, humanFormat: String = null, options: Map[String, String] = Map()): Unit = {
     FORMAT_COMPRESSIONS(format).foreach { compression =>
       df.write.format(format).option("compression", compression).options(options).save(
-        s"$OUTPUT_DIR/$schemaName/${if (humanFormat == null) format else humanFormat}/$compression")
+        s"${config.outputDir}/$schemaName/${if (humanFormat == null) format else humanFormat}/$compression")
     }
   }
 
@@ -45,7 +43,7 @@ object App {
    * Renames all 'part-' files to 'dataset.ext'
    */
   private def renameFiles(): Unit = {
-    Files.walkFileTree(Paths.get(OUTPUT_DIR), new SimpleFileVisitor[Path] {
+    Files.walkFileTree(Paths.get(config.outputDir), new SimpleFileVisitor[Path] {
       override def visitFile(t: Path, basicFileAttributes: BasicFileAttributes): FileVisitResult = {
         if (!t.toFile.isDirectory) {
           val fileName = t.getFileName.toString
@@ -60,20 +58,26 @@ object App {
     })
   }
 
-  def main(args: Array[String]): Unit = {
+  def run(): Unit = {
     val spark = SparkSession.builder()
       .appName(classOf[App].getName)
       .master("local[*]")
       .getOrCreate()
 
-    scala.reflect.io.Directory(new File(OUTPUT_DIR)).deleteRecursively()
+    scala.reflect.io.Directory(new File(config.outputDir)).deleteRecursively()
 
-    writeDf(
-      RandomDataGenerator.randomDataset(spark, numFields = 50, numRows = 100, flatSchema = true), flatSchema = true)
+    val rg = new RandomDataGenerator(config)
 
-    writeDf(
-      RandomDataGenerator.randomDataset(spark, numFields = 150, numRows = 100), flatSchema = false)
+    Seq(true, false).foreach(x =>
+      writeDf(rg.randomDataset(spark, flatSchema = x), flatSchema = x))
 
     renameFiles()
+  }
+}
+
+object App {
+  def main(args: Array[String]): Unit = {
+    val config = Config.parseArgs(args)
+    new App(config).run()
   }
 }
