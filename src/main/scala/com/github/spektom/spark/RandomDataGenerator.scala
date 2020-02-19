@@ -1,6 +1,7 @@
 package com.github.spektom.spark
 
 import java.math.MathContext
+import java.nio.ByteBuffer
 
 import com.github.spektom.spark.RandomDataGenerator._
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
@@ -24,6 +25,19 @@ object RandomDataGenerator {
   val BigIntDecimal: DecimalType = DecimalType(38, 0)
 
   val LOREM_IPSUM: Array[String] = "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium totam rem aperiam eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt neque porro quisquam est qui dolorem ipsum quia dolor sit amet consectetur adipisci velit sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem Ut enim ad minima veniam quis nostrum exercitationem ullam corporis suscipit laboriosam nisi ut aliquid ex ea commodi consequatur? Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur vel illum qui dolorem eum fugiat quo voluptas nulla pariatur At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint obcaecati cupiditate non provident similique sunt in culpa qui officia deserunt mollitia animi id est laborum et dolorum fuga Et harum quidem rerum facilis est et expedita distinctio Nam libero tempore cum soluta nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat facere possimus omnis voluptas assumenda est omnis dolor repellendus Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non recusandae Itaque earum rerum hic tenetur a sapiente delectus ut aut reiciendis voluptatibus maiores alias consequatur aut perferendis doloribus asperiores repellat".split(" ")
+
+  case object UUIDStringType extends DataType {
+    override def defaultSize: Int = 16
+
+    override def asNullable: DataType = this
+  }
+
+  case object UUIDBytesType extends DataType {
+    override def defaultSize: Int = 16
+
+    override def asNullable: DataType = this
+  }
+
 }
 
 /**
@@ -74,6 +88,14 @@ class RandomDataGenerator(config: Config,
     }
   }
 
+  private def randomUUID(): java.util.UUID = {
+    if (random.nextFloat() <= config.probabilityOfInteresting) {
+      new java.util.UUID(0L, 0L)
+    } else {
+      java.util.UUID.randomUUID()
+    }
+  }
+
   /**
    * A wrapper of Float.intBitsToFloat to use a unique NaN value for all NaN values.
    * This prevents `checkEvaluationWithUnsafeProjection` from failing due to
@@ -104,22 +126,24 @@ class RandomDataGenerator(config: Config,
    */
   def columnName(dataType: DataType, idx: Int): String = {
     val prefix = dataType match {
-      case StringType => "str"
+      case ArrayType(_, _) => "arr"
       case BinaryType => "bin"
       case BooleanType => "bool"
-      case DateType => "date"
-      case TimestampType => "ts"
-      case Fixed(_, _) => "dec"
-      case DoubleType => "real"
-      case FloatType => "float"
       case ByteType => "byte"
+      case DateType => "date"
+      case DoubleType => "real"
+      case Fixed(_, _) => "dec"
+      case FloatType => "float"
       case IntegerType => "int"
       case LongType => "long"
-      case ShortType => "short"
-      case NullType => "null"
-      case ArrayType(_, _) => "arr"
       case MapType(_, _, _) => "map"
+      case NullType => "null"
+      case ShortType => "short"
+      case StringType => "str"
       case StructType(_) => "obj"
+      case TimestampType => "ts"
+      case UUIDStringType => "uuids"
+      case UUIDBytesType => "uuidb"
       case _ => throw new IllegalStateException(s"Unsupported type: $dataType")
     }
     prefix + "_" + BigInt.apply(idx).toString(36)
@@ -127,17 +151,32 @@ class RandomDataGenerator(config: Config,
 
   /**
    * Returns random type from the list of data types.
-   * All different decimal types (DecimalType) have the same probability.
+   * All different decimal types (DecimalType) or UUID types have the same probability.
    */
   def randomType(acceptedTypes: Seq[DataType]): DataType = {
-    val otherTypes = acceptedTypes.filterNot(dt => dt.isInstanceOf[DecimalType])
+    val otherTypes = acceptedTypes.filterNot(dt => dt.isInstanceOf[DecimalType] || dt.getClass.getName.contains("UUID"))
     val decimalTypes = acceptedTypes.filter(dt => dt.isInstanceOf[DecimalType])
-    val n = random.nextInt(otherTypes.size + 1)
-    if (n == otherTypes.size) {
+    val uuidTypes = acceptedTypes.filter(dt => dt.getClass.getName.contains("UUID"))
+    val n = random.nextInt(otherTypes.size + 2)
+    if (n == otherTypes.size + 1) {
       decimalTypes(random.nextInt(decimalTypes.size))
+    } else if (n == otherTypes.size) {
+      uuidTypes(random.nextInt(uuidTypes.size))
     } else {
       otherTypes(n)
     }
+  }
+
+  def toNativeType(dt: DataType): DataType = {
+    dt match {
+      case UUIDBytesType => BinaryType
+      case UUIDStringType => StringType
+      case x => x
+    }
+  }
+
+  def structField(col: String, dt: DataType): StructField = {
+    StructField(col, toNativeType(dt), random.nextBoolean())
   }
 
   /**
@@ -149,7 +188,7 @@ class RandomDataGenerator(config: Config,
   def randomSchema(numFields: Int, acceptedTypes: Seq[DataType]): StructType = {
     StructType(Seq.tabulate(numFields) { i =>
       val dt = randomType(acceptedTypes)
-      StructField(columnName(dt, i), dt, nullable = random.nextBoolean())
+      structField(columnName(dt, i), dt)
     })
   }
 
@@ -166,7 +205,7 @@ class RandomDataGenerator(config: Config,
       if (v < acceptedTypes.size) {
         // Simple type:
         val dt = randomType(acceptedTypes)
-        fields += StructField(columnName(dt, i), dt, random.nextBoolean())
+        fields += structField(columnName(dt, i), dt)
         numFields -= 1
       } else if (v == acceptedTypes.size) {
         // Map
@@ -175,13 +214,13 @@ class RandomDataGenerator(config: Config,
           val n = Math.max(random.nextInt(numFields), 1)
           val nested = randomNestedSchema(n, acceptedTypes)
           val mapType = MapType(StringType, nested, random.nextBoolean())
-          fields += StructField(columnName(mapType, i), mapType, random.nextBoolean())
+          fields += structField(columnName(mapType, i), mapType)
           numFields -= n
         } else {
           // Map with primitive value
           val dt = randomType(acceptedTypes)
-          val mapType = MapType(StringType, dt, random.nextBoolean())
-          fields += StructField(columnName(mapType, i), mapType, random.nextBoolean())
+          val mapType = MapType(StringType, toNativeType(dt), random.nextBoolean())
+          fields += structField(columnName(mapType, i), mapType)
           numFields -= 1
         }
       } else if (v == acceptedTypes.size + 1) {
@@ -191,20 +230,20 @@ class RandomDataGenerator(config: Config,
           val n = Math.max(random.nextInt(numFields), 1)
           val nested = randomNestedSchema(n, acceptedTypes)
           val arrayType = ArrayType(nested)
-          fields += StructField(columnName(arrayType, i), arrayType, random.nextBoolean())
+          fields += structField(columnName(arrayType, i), arrayType)
           numFields -= n
         } else {
           // Array with primitive value
           val dt = randomType(acceptedTypes)
-          val arrayType = ArrayType(dt)
-          fields += StructField(columnName(arrayType, i), arrayType, random.nextBoolean())
+          val arrayType = ArrayType(toNativeType(dt))
+          fields += structField(columnName(arrayType, i), arrayType)
           numFields -= 1
         }
       } else {
         // Struct
         val n = Math.max(random.nextInt(numFields), 1)
         val nested = randomNestedSchema(n, acceptedTypes)
-        fields += StructField(columnName(nested, i), nested, random.nextBoolean())
+        fields += structField(columnName(nested, i), nested)
         numFields -= n
       }
       i += 1
@@ -231,6 +270,11 @@ class RandomDataGenerator(config: Config,
         val arr = new Array[Byte](random.nextInt(config.maxTextLength))
         random.nextBytes(arr)
         arr
+      })
+      case UUIDStringType => Some(() => randomUUID().toString)
+      case UUIDBytesType => Some(() => {
+        val uuid = randomUUID()
+        ByteBuffer.allocate(16).putLong(uuid.getMostSignificantBits).putLong(uuid.getLeastSignificantBits).array()
       })
       case BooleanType => Some(() => random.nextBoolean())
       case DateType =>
@@ -359,7 +403,13 @@ class RandomDataGenerator(config: Config,
         case StructType(children) =>
           fields += randomRow(StructType(children))
         case _ =>
-          val generator = forType(f.dataType, f.nullable)
+          val generator =
+            if (f.name.startsWith("uuids"))
+              forType(UUIDStringType, f.nullable)
+            else if (f.name.startsWith("uuidb"))
+              forType(UUIDBytesType, f.nullable)
+            else
+              forType(f.dataType, f.nullable)
           assert(generator.isDefined, "Unsupported type")
           val gen = generator.get
           fields += gen()
@@ -378,8 +428,8 @@ class RandomDataGenerator(config: Config,
   def randomDataset(spark: SparkSession,
                     flatSchema: Boolean,
                     acceptedTypes: Array[DataType] = Array(
-                      BinaryType, BooleanType, ByteType, DateType, FloatType,
-                      DoubleType, IntegerType, LongType, ShortType, StringType, TimestampType,
+                      BinaryType, BooleanType, ByteType, DateType, FloatType, DoubleType, IntegerType, LongType,
+                      ShortType, StringType, TimestampType, UUIDStringType, UUIDBytesType,
                       BooleanDecimal, ShortDecimal, IntDecimal, ByteDecimal, FloatDecimal, LongDecimal,
                       DoubleDecimal, BigIntDecimal, new DecimalType(5, 2),
                       new DecimalType(12, 2), new DecimalType(30, 10))
