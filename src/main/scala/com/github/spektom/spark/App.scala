@@ -7,6 +7,9 @@ import java.nio.file.attribute.BasicFileAttributes
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 class App(config: Config) {
+  /**
+   * Supported compressions by file format
+   */
   private val FORMAT_COMPRESSIONS = Map(
     "orc" -> Seq("lzo", "snappy", "zlib", "none"),
     "avro" -> Seq("deflate", "snappy", "bzip2", "xz", "uncompressed"),
@@ -59,10 +62,7 @@ class App(config: Config) {
   }
 
   def run(): Unit = {
-    val spark = SparkSession.builder()
-      .appName(classOf[App].getName)
-      .master("local[*]")
-      .getOrCreate()
+    val spark = SparkSession.builder().appName(classOf[App].getName).master("local[*]").getOrCreate()
 
     scala.reflect.io.Directory(new File(config.outputDir)).deleteRecursively()
 

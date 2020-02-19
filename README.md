@@ -26,3 +26,10 @@ Supported compressions are all that are supported by Spark and current format.
     
 After running, a folder named `output` will contain the data files.
 
+## Configuration
+
+The utility accepts various command line arguments that tune some of its parameters.
+To see the list of available options, run:
+
+    spark-submit target/data-foramts-samples_2.11-0.1.0-uberjar.jar --help
+

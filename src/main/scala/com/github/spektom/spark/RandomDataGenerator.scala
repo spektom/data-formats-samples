@@ -2,6 +2,7 @@ package com.github.spektom.spark
 
 import java.math.MathContext
 
+import com.github.spektom.spark.RandomDataGenerator._
 import org.apache.spark.sql.catalyst.util.DateTimeUtils
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
@@ -10,30 +11,31 @@ import org.apache.spark.unsafe.types.CalendarInterval
 import scala.collection.mutable
 import scala.util.Random
 
+object RandomDataGenerator {
+
+  // Various decimal types configurations
+  val BooleanDecimal: DecimalType = DecimalType(1, 0)
+  val ByteDecimal: DecimalType = DecimalType(3, 0)
+  val ShortDecimal: DecimalType = DecimalType(5, 0)
+  val IntDecimal: DecimalType = DecimalType(10, 0)
+  val LongDecimal: DecimalType = DecimalType(20, 0)
+  val FloatDecimal: DecimalType = DecimalType(14, 7)
+  val DoubleDecimal: DecimalType = DecimalType(30, 15)
+  val BigIntDecimal: DecimalType = DecimalType(38, 0)
+
+  val LOREM_IPSUM: Array[String] = "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium totam rem aperiam eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt neque porro quisquam est qui dolorem ipsum quia dolor sit amet consectetur adipisci velit sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem Ut enim ad minima veniam quis nostrum exercitationem ullam corporis suscipit laboriosam nisi ut aliquid ex ea commodi consequatur? Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur vel illum qui dolorem eum fugiat quo voluptas nulla pariatur At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint obcaecati cupiditate non provident similique sunt in culpa qui officia deserunt mollitia animi id est laborum et dolorum fuga Et harum quidem rerum facilis est et expedita distinctio Nam libero tempore cum soluta nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat facere possimus omnis voluptas assumenda est omnis dolor repellendus Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non recusandae Itaque earum rerum hic tenetur a sapiente delectus ut aut reiciendis voluptatibus maiores alias consequatur aut perferendis doloribus asperiores repellat".split(" ")
+}
+
 /**
  * Random data generators for Spark SQL DataTypes. These generators do not generate uniformly random
  * values; instead, they're biased to return "interesting" values (such as maximum / minimum values)
  * with higher probability.
+ *
+ * @param config Configuration
+ * @param random Optional random generator instance
  */
-class RandomDataGenerator(config: Config) {
-  private val random = new Random(System.nanoTime())
-
-  private final val MAX_STR_LEN: Int = 1024
-  private final val MAX_PRIMITIVE_ARR_SIZE: Int = 128
-  private final val MAX_NESTED_ARR_SIZE: Int = 20
-  private final val MAX_PRIMITIVE_MAP_SIZE: Int = 128
-  private final val MAX_NESTED_MAP_SIZE: Int = 20
-
-  private val BooleanDecimal: DecimalType = DecimalType(1, 0)
-  private val ByteDecimal: DecimalType = DecimalType(3, 0)
-  private val ShortDecimal: DecimalType = DecimalType(5, 0)
-  private val IntDecimal: DecimalType = DecimalType(10, 0)
-  private val LongDecimal: DecimalType = DecimalType(20, 0)
-  private val FloatDecimal: DecimalType = DecimalType(14, 7)
-  private val DoubleDecimal: DecimalType = DecimalType(30, 15)
-  private val BigIntDecimal: DecimalType = DecimalType(38, 0)
-
-  private val LOREM_IPSUM = "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium totam rem aperiam eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt neque porro quisquam est qui dolorem ipsum quia dolor sit amet consectetur adipisci velit sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem Ut enim ad minima veniam quis nostrum exercitationem ullam corporis suscipit laboriosam nisi ut aliquid ex ea commodi consequatur? Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur vel illum qui dolorem eum fugiat quo voluptas nulla pariatur At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint obcaecati cupiditate non provident similique sunt in culpa qui officia deserunt mollitia animi id est laborum et dolorum fuga Et harum quidem rerum facilis est et expedita distinctio Nam libero tempore cum soluta nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat facere possimus omnis voluptas assumenda est omnis dolor repellendus Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non recusandae Itaque earum rerum hic tenetur a sapiente delectus ut aut reiciendis voluptatibus maiores alias consequatur aut perferendis doloribus asperiores repellat".split(" ")
+class RandomDataGenerator(config: Config,
+                          random: Random = new Random(System.nanoTime())) {
 
   private object Fixed {
     def unapply(t: DecimalType): Option[(Int, Int)] = Some((t.precision, t.scale))
@@ -57,7 +59,7 @@ class RandomDataGenerator(config: Config) {
 
   private def randomText(): String = {
     if (random.nextFloat() <= config.probabilityOfInteresting) {
-      random.nextString(random.nextInt(MAX_STR_LEN))
+      random.nextString(random.nextInt(config.maxTextLength))
     } else {
       var s = ""
       var n = random.nextInt(10)
@@ -65,10 +67,10 @@ class RandomDataGenerator(config: Config) {
         if (s.length > 0) {
           s += " "
         }
-        s += LOREM_IPSUM(random.nextInt(LOREM_IPSUM.size))
+        s += LOREM_IPSUM(random.nextInt(LOREM_IPSUM.length))
         n -= 1
       }
-      if (s.length > MAX_STR_LEN) s.substring(0, MAX_STR_LEN) else s
+      if (s.length > config.maxTextLength) s.substring(0, config.maxTextLength) else s
     }
   }
 
@@ -226,7 +228,7 @@ class RandomDataGenerator(config: Config) {
     val valueGenerator: Option[() => Any] = dataType match {
       case StringType => Some(() => randomText())
       case BinaryType => Some(() => {
-        val arr = new Array[Byte](random.nextInt(MAX_STR_LEN))
+        val arr = new Array[Byte](random.nextInt(config.maxTextLength))
         random.nextBytes(arr)
         arr
       })
@@ -290,8 +292,8 @@ class RandomDataGenerator(config: Config) {
       case ArrayType(elementType, containsNull) =>
         forType(elementType, nullable = containsNull).map {
           val maxArraySize = elementType match {
-            case _: StructType => MAX_NESTED_ARR_SIZE
-            case _ => MAX_PRIMITIVE_ARR_SIZE
+            case _: StructType => config.maxNestedArraySize
+            case _ => config.maxPrimitiveArraySize
           }
           elementGenerator => () => Seq.fill(random.nextInt(maxArraySize))(elementGenerator())
         }
@@ -303,8 +305,8 @@ class RandomDataGenerator(config: Config) {
         ) yield {
           () => {
             val maxMapSize = valueType match {
-              case _: StructType => MAX_NESTED_MAP_SIZE
-              case _ => MAX_PRIMITIVE_MAP_SIZE
+              case _: StructType => config.maxNestedMapSize
+              case _ => config.maxPrimitiveMapSize
             }
             val length = random.nextInt(maxMapSize)
             val keys = scala.collection.mutable.HashSet(Seq.fill(length)(keyGenerator()): _*)
@@ -369,21 +371,24 @@ class RandomDataGenerator(config: Config) {
   /**
    * Generates random data frame.
    *
-   * @param spark      Spark session
-   * @param flatSchema Whether the output schema is flat or hierarchical
-   * @param types      Types to use when generating a dataset
+   * @param spark         Spark session
+   * @param flatSchema    Whether the output schema is flat or hierarchical
+   * @param acceptedTypes Various types to use in generated schema
    */
   def randomDataset(spark: SparkSession,
                     flatSchema: Boolean,
-                    types: Array[DataType] = Array(
-                      BinaryType, BooleanType, ByteType, DateType, FloatType, DoubleType, IntegerType, LongType, ShortType, StringType, TimestampType,
-                      BooleanDecimal, ShortDecimal, IntDecimal, ByteDecimal, FloatDecimal, LongDecimal, DoubleDecimal, BigIntDecimal, new DecimalType(5, 2), new DecimalType(12, 2), new DecimalType(30, 10)
-                    )): DataFrame = {
+                    acceptedTypes: Array[DataType] = Array(
+                      BinaryType, BooleanType, ByteType, DateType, FloatType,
+                      DoubleType, IntegerType, LongType, ShortType, StringType, TimestampType,
+                      BooleanDecimal, ShortDecimal, IntDecimal, ByteDecimal, FloatDecimal, LongDecimal,
+                      DoubleDecimal, BigIntDecimal, new DecimalType(5, 2),
+                      new DecimalType(12, 2), new DecimalType(30, 10))
+                   ): DataFrame = {
 
     val schema = if (flatSchema) {
-      randomSchema(config.flatSchemaFields, types)
+      randomSchema(config.flatSchemaFields, acceptedTypes)
     } else {
-      randomNestedSchema(config.hierSchemaFields, types)
+      randomNestedSchema(config.hierSchemaFields, acceptedTypes)
     }
     val rows = (1 to config.rowsNumber).map(_ => randomRow(schema))
     val rdd = spark.sparkContext.makeRDD(rows)
