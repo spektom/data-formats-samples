@@ -3,6 +3,7 @@ package com.github.spektom.spark
 import java.io.File
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
+import java.util.TimeZone
 
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
@@ -62,7 +63,10 @@ class App(config: Config) {
   }
 
   def run(): Unit = {
-    val spark = SparkSession.builder().appName(classOf[App].getName).master("local[*]").getOrCreate()
+    TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+
+    val spark = SparkSession.builder().config("spark.sql.session.timeZone", "UTC")
+      .appName(classOf[App].getName).master("local[*]").getOrCreate()
 
     scala.reflect.io.Directory(new File(config.outputDir)).deleteRecursively()
 

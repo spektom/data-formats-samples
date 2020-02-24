@@ -37,7 +37,6 @@ object RandomDataGenerator {
 
     override def asNullable: DataType = this
   }
-
 }
 
 /**
@@ -186,8 +185,9 @@ class RandomDataGenerator(config: Config,
    * @param acceptedTypes aypes to draw from.
    */
   def randomSchema(numFields: Int, acceptedTypes: Seq[DataType]): StructType = {
+    val types = acceptedTypes.filterNot(t => t.isInstanceOf[BinaryType] || t.getClass.getName.contains("UUIDBytesType"))
     StructType(Seq.tabulate(numFields) { i =>
-      val dt = randomType(acceptedTypes)
+      val dt = randomType(types)
       structField(columnName(dt, i), dt)
     })
   }
